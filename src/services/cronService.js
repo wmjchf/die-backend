@@ -9,11 +9,23 @@ const SMS_INTERVAL_MINUTES = parseInt(process.env.SMS_INTERVAL_MINUTES || '30');
 /**
  * 检查用户是否需要发送提醒短信
  */
+// 格式化日期时间为 MySQL DATETIME 格式 (YYYY-MM-DD HH:MM:SS)
+function formatMySQLDateTime(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  const seconds = String(date.getSeconds()).padStart(2, '0');
+  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+}
+
 async function checkAndSendReminders() {
   try {
     logger.info('开始检查超时用户...');
     
-    const now = new Date().toISOString();
+    const now = new Date();
+    const nowMySQL = formatMySQLDateTime(now);
     
     // 查找所有超过截止时间且未暂停的用户
     const overdueUsers = await all(`
@@ -25,10 +37,10 @@ async function checkAndSendReminders() {
       WHERE u.is_paused = 0
         AND (c.next_check_in_deadline IS NULL OR c.next_check_in_deadline < ?)
       GROUP BY u.id
-    `, [now]);
+    `, [nowMySQL]);
 
     for (const user of overdueUsers) {
-      await processOverdueUser(user, now);
+      await processOverdueUser(user, nowMySQL);
     }
 
     logger.info(`检查完成，处理了 ${overdueUsers.length} 个用户`);
@@ -40,13 +52,13 @@ async function checkAndSendReminders() {
 /**
  * 处理超时的用户
  */
-async function processOverdueUser(user, now) {
+async function processOverdueUser(user, nowMySQL) {
   try {
     const deadline = user.last_deadline;
     if (!deadline) return;
 
     const deadlineTime = new Date(deadline);
-    const nowTime = new Date(now);
+    const nowTime = new Date();
     const gracePeriodHours = user.grace_period_hours || 2;
     const gracePeriodEnd = new Date(deadlineTime.getTime() + gracePeriodHours * 60 * 60 * 1000);
 
@@ -68,7 +80,7 @@ async function processOverdueUser(user, now) {
     }
 
     // 检查已发送的短信数量（今日）
-    const today = new Date(now).toISOString().split('T')[0];
+    const today = new Date().toISOString().split('T')[0];
     const smsLogs = await all(
       `SELECT MAX(sms_count) as max_count, MAX(sent_at) as last_sent
        FROM sms_logs 
@@ -133,6 +145,8 @@ async function sendReminderNotifications() {
     
     const now = new Date();
     const reminderTime = new Date(now.getTime() + 60 * 60 * 1000); // 1小时后
+    const nowMySQL = formatMySQLDateTime(now);
+    const reminderTimeMySQL = formatMySQLDateTime(reminderTime);
     
     // 查找即将到期的用户
     const usersToRemind = await all(`
@@ -146,7 +160,7 @@ async function sendReminderNotifications() {
           WHERE c2.user_id = u.id 
             AND c2.check_in_time > c.check_in_time
         )
-    `, [now.toISOString(), reminderTime.toISOString()]);
+    `, [nowMySQL, reminderTimeMySQL]);
 
     // TODO: 发送推送通知（这里暂时只记录日志）
     for (const user of usersToRemind) {
