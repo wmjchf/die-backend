@@ -2,19 +2,9 @@ import express from 'express';
 import { authenticate } from '../middleware/auth.js';
 import { get, all, run } from '../db/index.js';
 import { logger } from '../utils/logger.js';
+import { formatMySQLDateTime, getChinaTime, getChinaTodayStart, getChinaTodayEnd, parseMySQLDateTime } from '../utils/timezone.js';
 
 const router = express.Router();
-
-// 格式化日期时间为 MySQL DATETIME 格式 (YYYY-MM-DD HH:MM:SS)
-function formatMySQLDateTime(date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  const hours = String(date.getHours()).padStart(2, '0');
-  const minutes = String(date.getMinutes()).padStart(2, '0');
-  const seconds = String(date.getSeconds()).padStart(2, '0');
-  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
-}
 
 // 所有路由需要认证
 router.use(authenticate);
@@ -34,11 +24,9 @@ router.post('/', async (req, res, next) => {
       return res.status(400).json({ error: '服务已暂停，请先恢复服务' });
     }
 
-    // 检查今天是否已经确认过
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const todayStart = formatMySQLDateTime(today);
-    const todayEnd = formatMySQLDateTime(new Date(today.getTime() + 24 * 60 * 60 * 1000 - 1));
+    // 检查今天是否已经确认过（使用中国时区）
+    const todayStart = formatMySQLDateTime(getChinaTodayStart());
+    const todayEnd = formatMySQLDateTime(getChinaTodayEnd());
 
     const todayCheckin = await get(
       `SELECT * FROM checkins 
@@ -54,7 +42,7 @@ router.post('/', async (req, res, next) => {
     }
 
     const checkInIntervalHours = user.check_in_interval_hours || 24;
-    const now = new Date();
+    const now = getChinaTime(); // 使用中国时区时间
     const nextDeadline = new Date(now.getTime() + checkInIntervalHours * 60 * 60 * 1000);
 
     // 创建新的 check-in 记录
@@ -102,9 +90,9 @@ router.get('/latest', async (req, res, next) => {
       });
     }
 
-    // 检查是否已过期
-    const now = new Date();
-    const deadline = new Date(checkin.next_check_in_deadline);
+    // 检查是否已过期（使用中国时区）
+    const now = getChinaTime();
+    const deadline = parseMySQLDateTime(checkin.next_check_in_deadline);
     const isOverdue = now > deadline;
 
     res.json({
@@ -182,12 +170,9 @@ router.get('/stats', async (req, res, next) => {
       [userId]
     );
 
-    // 检查今天是否已经确认过
-    const now = new Date();
-    const today = new Date(now);
-    today.setHours(0, 0, 0, 0);
-    const todayStart = formatMySQLDateTime(today);
-    const todayEnd = formatMySQLDateTime(new Date(today.getTime() + 24 * 60 * 60 * 1000 - 1));
+    // 检查今天是否已经确认过（使用中国时区）
+    const todayStart = formatMySQLDateTime(getChinaTodayStart());
+    const todayEnd = formatMySQLDateTime(getChinaTodayEnd());
 
     const todayCheckin = await get(
       `SELECT * FROM checkins 
@@ -206,7 +191,8 @@ router.get('/stats', async (req, res, next) => {
 
     if (latestCheckin) {
       nextDeadline = latestCheckin.next_check_in_deadline;
-      const deadlineTime = new Date(nextDeadline);
+      const now = getChinaTime();
+      const deadlineTime = parseMySQLDateTime(nextDeadline);
       isOverdue = now > deadlineTime;
 
       if (isOverdue) {
