@@ -44,19 +44,39 @@ export function formatMySQLDateTime(date) {
 
 /**
  * 将 MySQL DATETIME 字符串（中国时区）转换为 Date 对象
- * @param {string} mysqlDateTime - MySQL DATETIME 格式字符串 (YYYY-MM-DD HH:MM:SS)
- * @returns {Date} Date 对象
+ * @param {string|null|undefined} mysqlDateTime - MySQL DATETIME 格式字符串 (YYYY-MM-DD HH:MM:SS)
+ * @returns {Date|null} Date 对象，如果输入无效则返回 null
  */
 export function parseMySQLDateTime(mysqlDateTime) {
-  // MySQL DATETIME 存储的是中国时区时间（无时区信息）
-  // 解析为 Date 对象时，需要减去8小时偏移，得到 UTC 时间
-  const [datePart, timePart] = mysqlDateTime.split(' ');
-  const [year, month, day] = datePart.split('-').map(Number);
-  const [hours, minutes, seconds] = timePart.split(':').map(Number);
-  
-  // 创建 UTC 时间（减去8小时偏移）
-  const utcTimestamp = Date.UTC(year, month - 1, day, hours, minutes, seconds || 0) - CHINA_TIMEZONE_OFFSET;
-  return new Date(utcTimestamp);
+  // 处理空值或非字符串类型
+  if (!mysqlDateTime || typeof mysqlDateTime !== 'string') {
+    return null;
+  }
+
+  try {
+    // MySQL DATETIME 存储的是中国时区时间（无时区信息）
+    // 解析为 Date 对象时，需要减去8小时偏移，得到 UTC 时间
+    const [datePart, timePart] = mysqlDateTime.split(' ');
+    
+    if (!datePart || !timePart) {
+      return null;
+    }
+    
+    const [year, month, day] = datePart.split('-').map(Number);
+    const [hours, minutes, seconds] = timePart.split(':').map(Number);
+    
+    // 验证数字是否有效
+    if (isNaN(year) || isNaN(month) || isNaN(day) || 
+        isNaN(hours) || isNaN(minutes) || isNaN(seconds)) {
+      return null;
+    }
+    
+    // 创建 UTC 时间（减去8小时偏移）
+    const utcTimestamp = Date.UTC(year, month - 1, day, hours, minutes, seconds || 0) - CHINA_TIMEZONE_OFFSET;
+    return new Date(utcTimestamp);
+  } catch (error) {
+    return null;
+  }
 }
 
 /**

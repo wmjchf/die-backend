@@ -25,16 +25,16 @@ router.post('/', async (req, res, next) => {
     }
 
     // 检查今天是否已经确认过（使用中国时区）
-    const todayStart = formatMySQLDateTime(getChinaTodayStart());
-    const todayEnd = formatMySQLDateTime(getChinaTodayEnd());
+    // 使用 MySQL 的 DATE 函数直接比较日期部分，更可靠
+    const chinaNow = getChinaTime();
+    const todayDate = formatMySQLDateTime(chinaNow).split(' ')[0]; // 获取今天的日期部分 YYYY-MM-DD
 
     const todayCheckin = await get(
       `SELECT * FROM checkins 
        WHERE user_id = ? 
-         AND check_in_time >= ? 
-         AND check_in_time < ?
+         AND DATE(check_in_time) = ?
        LIMIT 1`,
-      [userId, todayStart, todayEnd]
+      [userId, todayDate]
     );
 
     if (todayCheckin) {
@@ -93,7 +93,7 @@ router.get('/latest', async (req, res, next) => {
     // 检查是否已过期（使用中国时区）
     const now = getChinaTime();
     const deadline = parseMySQLDateTime(checkin.next_check_in_deadline);
-    const isOverdue = now > deadline;
+    const isOverdue = deadline ? now > deadline : false;
 
     res.json({
       checkin: {
@@ -161,26 +161,30 @@ router.get('/stats', async (req, res, next) => {
       [userId]
     );
 
-    // 获取连续确认天数（简化实现，最近30天）
+    // 获取连续确认天数（简化实现，最近30天，使用中国时区）
+    const chinaNowForDays = getChinaTime();
+    const thirtyDaysAgo = new Date(chinaNowForDays.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const thirtyDaysAgoStr = formatMySQLDateTime(thirtyDaysAgo);
+    
     const consecutiveDays = await get(
       `SELECT COUNT(DISTINCT DATE(check_in_time)) as days
        FROM checkins
        WHERE user_id = ?
-         AND check_in_time >= DATE_SUB(NOW(), INTERVAL 30 DAY)`,
-      [userId]
+         AND check_in_time >= ?`,
+      [userId, thirtyDaysAgoStr]
     );
 
     // 检查今天是否已经确认过（使用中国时区）
-    const todayStart = formatMySQLDateTime(getChinaTodayStart());
-    const todayEnd = formatMySQLDateTime(getChinaTodayEnd());
+    // 使用 MySQL 的 DATE 函数直接比较日期部分，更可靠
+    const chinaNow = getChinaTime();
+    const todayDate = formatMySQLDateTime(chinaNow).split(' ')[0]; // 获取今天的日期部分 YYYY-MM-DD
 
     const todayCheckin = await get(
       `SELECT * FROM checkins 
        WHERE user_id = ? 
-         AND check_in_time >= ? 
-         AND check_in_time < ?
+         AND DATE(check_in_time) = ?
        LIMIT 1`,
-      [userId, todayStart, todayEnd]
+      [userId, todayDate]
     );
 
     const todayChecked = !!todayCheckin;
@@ -193,14 +197,17 @@ router.get('/stats', async (req, res, next) => {
       nextDeadline = latestCheckin.next_check_in_deadline;
       const now = getChinaTime();
       const deadlineTime = parseMySQLDateTime(nextDeadline);
-      isOverdue = now > deadlineTime;
+      
+      if (deadlineTime) {
+        isOverdue = now > deadlineTime;
 
-      if (isOverdue) {
-        status = 'overdue';
-      } else {
-        const hoursUntilDeadline = (deadlineTime - now) / (1000 * 60 * 60);
-        if (hoursUntilDeadline <= (user.reminder_before_hours || 1)) {
-          status = 'reminder';
+        if (isOverdue) {
+          status = 'overdue';
+        } else {
+          const hoursUntilDeadline = (deadlineTime - now) / (1000 * 60 * 60);
+          if (hoursUntilDeadline <= (user.reminder_before_hours || 1)) {
+            status = 'reminder';
+          }
         }
       }
     } else {

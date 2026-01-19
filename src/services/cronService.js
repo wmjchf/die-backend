@@ -66,8 +66,9 @@ async function processOverdueUser(user, nowMySQL) {
       return;
     }
 
-    // 检查已发送的短信数量（今日）
-    const today = new Date().toISOString().split('T')[0];
+    // 检查已发送的短信数量（今日，使用中国时区）
+    const chinaNow = getChinaTime();
+    const today = formatMySQLDateTime(chinaNow).split(' ')[0]; // 获取今天的日期部分 YYYY-MM-DD
     const smsLogs = await all(
       `SELECT MAX(sms_count) as max_count, MAX(sent_at) as last_sent
        FROM sms_logs 
@@ -88,7 +89,11 @@ async function processOverdueUser(user, nowMySQL) {
 
     // 检查是否需要发送（第一条立即发送，后续需要间隔）
     if (currentSmsCount > 0) {
-      const lastSentTime = new Date(lastSMS.last_sent);
+      const lastSentTime = parseMySQLDateTime(lastSMS.last_sent); // 使用时区解析函数
+      if (!lastSentTime) {
+        logger.warn(`用户 ${user.id} 的上次发送时间解析失败，跳过间隔检查`);
+        return;
+      }
       const minutesSinceLastSMS = (nowTime - lastSentTime) / (1000 * 60);
       
       if (minutesSinceLastSMS < SMS_INTERVAL_MINUTES) {
