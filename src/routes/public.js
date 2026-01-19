@@ -19,6 +19,7 @@ router.get('/users', async (req, res, next) => {
     const offset = (page - 1) * limit;
 
     // 获取用户列表（只返回必要字段，隐藏敏感信息）
+    // 注意：MySQL 预处理语句对 LIMIT 参数支持有限，使用字符串拼接（已验证为数字，安全）
     const users = await all(
       `SELECT 
         id,
@@ -29,8 +30,8 @@ router.get('/users', async (req, res, next) => {
         updated_at
       FROM users 
       ORDER BY created_at DESC 
-      LIMIT ? OFFSET ?`,
-      [limit, offset]
+      LIMIT ${offset}, ${limit}`,
+      []
     );
 
     // 获取总数
@@ -83,6 +84,7 @@ router.get('/checkins', async (req, res, next) => {
 
     if (userId) {
       // 获取特定用户的签到记录
+      // 注意：MySQL 预处理语句对 LIMIT 参数支持有限，使用字符串拼接（已验证为数字，安全）
       checkins = await all(
         `SELECT 
           c.id,
@@ -95,8 +97,8 @@ router.get('/checkins', async (req, res, next) => {
         INNER JOIN users u ON c.user_id = u.id
         WHERE c.user_id = ?
         ORDER BY c.check_in_time DESC 
-        LIMIT ? OFFSET ?`,
-        [userId, limit, offset]
+        LIMIT ${offset}, ${limit}`,
+        [userId]
       );
 
       totalResult = await get(
@@ -105,6 +107,7 @@ router.get('/checkins', async (req, res, next) => {
       );
     } else {
       // 获取所有签到记录
+      // 注意：MySQL 预处理语句对 LIMIT 参数支持有限，使用字符串拼接（已验证为数字，安全）
       checkins = await all(
         `SELECT 
           c.id,
@@ -116,8 +119,8 @@ router.get('/checkins', async (req, res, next) => {
         FROM checkins c
         INNER JOIN users u ON c.user_id = u.id
         ORDER BY c.check_in_time DESC 
-        LIMIT ? OFFSET ?`,
-        [limit, offset]
+        LIMIT ${offset}, ${limit}`,
+        []
       );
 
       totalResult = await get('SELECT COUNT(*) as total FROM checkins');

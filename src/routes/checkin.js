@@ -116,12 +116,13 @@ router.get('/history', async (req, res, next) => {
     const limit = parseInt(req.query.limit) || 20;
     const offset = (page - 1) * limit;
 
+    // 注意：MySQL 预处理语句对 LIMIT 参数支持有限，使用字符串拼接（已验证为数字，安全）
     const checkins = await all(
       `SELECT * FROM checkins 
        WHERE user_id = ? 
        ORDER BY check_in_time DESC 
-       LIMIT ? OFFSET ?`,
-      [userId, limit, offset]
+       LIMIT ${offset}, ${limit}`,
+      [userId]
     );
 
     const totalResult = await get(
