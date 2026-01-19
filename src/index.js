@@ -11,6 +11,7 @@ import userRoutes from './routes/user.js';
 import contactRoutes from './routes/contact.js';
 import checkinRoutes from './routes/checkin.js';
 import healthRoutes from './routes/health.js';
+import publicRoutes from './routes/public.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { logger } from './utils/logger.js';
 
@@ -32,7 +33,10 @@ app.use((req, res, next) => {
 app.use('/health', healthRoutes);
 app.use('/api/health', healthRoutes);
 
-// API 路由
+// 公开接口（无需认证）
+app.use('/api/public', publicRoutes);
+
+// API 路由（需要认证）
 app.use('/api/auth', authRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/contacts', contactRoutes);
