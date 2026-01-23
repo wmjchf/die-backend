@@ -26,8 +26,8 @@ router.get('/users', async (req, res, next) => {
         phone,
         nickname,
         is_paused,
-        created_at,
-        updated_at
+        UNIX_TIMESTAMP(created_at) * 1000 as created_at,
+        UNIX_TIMESTAMP(updated_at) * 1000 as updated_at
       FROM users 
       ORDER BY created_at DESC 
       LIMIT ${offset}, ${limit}`,
@@ -91,8 +91,8 @@ router.get('/checkins', async (req, res, next) => {
           c.user_id,
           u.phone,
           u.nickname,
-          c.check_in_time,
-          c.next_check_in_deadline
+          UNIX_TIMESTAMP(c.check_in_time) * 1000 as check_in_time,
+          UNIX_TIMESTAMP(c.next_check_in_deadline) * 1000 as next_check_in_deadline
         FROM checkins c
         INNER JOIN users u ON c.user_id = u.id
         WHERE c.user_id = ?
@@ -114,8 +114,8 @@ router.get('/checkins', async (req, res, next) => {
           c.user_id,
           u.phone,
           u.nickname,
-          c.check_in_time,
-          c.next_check_in_deadline
+          UNIX_TIMESTAMP(c.check_in_time) * 1000 as check_in_time,
+          UNIX_TIMESTAMP(c.next_check_in_deadline) * 1000 as next_check_in_deadline
         FROM checkins c
         INNER JOIN users u ON c.user_id = u.id
         ORDER BY c.check_in_time DESC 

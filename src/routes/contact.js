@@ -14,7 +14,15 @@ router.use(authenticate);
 router.get('/', async (req, res, next) => {
   try {
     const contacts = await all(
-      'SELECT * FROM contacts WHERE user_id = ? ORDER BY is_primary DESC, created_at ASC',
+      `SELECT 
+        id,
+        user_id,
+        name,
+        phone,
+        is_primary,
+        UNIX_TIMESTAMP(created_at) * 1000 as created_at,
+        UNIX_TIMESTAMP(updated_at) * 1000 as updated_at
+      FROM contacts WHERE user_id = ? ORDER BY is_primary DESC, created_at ASC`,
       [req.user.id]
     );
 
@@ -69,7 +77,18 @@ router.post('/', [
 
     logger.info(`用户 ${req.user.id} 添加了联系人: ${name} (${phone})`);
 
-    const contact = await get('SELECT * FROM contacts WHERE id = ?', [result.lastID]);
+    const contact = await get(
+      `SELECT 
+        id,
+        user_id,
+        name,
+        phone,
+        is_primary,
+        UNIX_TIMESTAMP(created_at) * 1000 as created_at,
+        UNIX_TIMESTAMP(updated_at) * 1000 as updated_at
+      FROM contacts WHERE id = ?`,
+      [result.lastID]
+    );
 
     res.status(201).json({
       message: '添加成功',
@@ -160,7 +179,18 @@ router.put('/:id', [
 
     logger.info(`用户 ${req.user.id} 更新了联系人 ${contactId}`);
 
-    const updatedContact = await get('SELECT * FROM contacts WHERE id = ?', [contactId]);
+    const updatedContact = await get(
+      `SELECT 
+        id,
+        user_id,
+        name,
+        phone,
+        is_primary,
+        UNIX_TIMESTAMP(created_at) * 1000 as created_at,
+        UNIX_TIMESTAMP(updated_at) * 1000 as updated_at
+      FROM contacts WHERE id = ?`,
+      [contactId]
+    );
 
     res.json({
       message: '更新成功',

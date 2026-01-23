@@ -12,7 +12,9 @@ const dbConfig = {
   connectionLimit: 10,
   queueLimit: 0,
   enableKeepAlive: true,
-  keepAliveInitialDelay: 0
+  keepAliveInitialDelay: 0,
+  timezone: '+00:00', // 使用 UTC 时区，TIMESTAMP 会自动处理时区转换
+  dateStrings: false // 确保 TIMESTAMP 和 DATETIME 返回 Date 对象而不是字符串
 };
 // 验证数据库配置
 if (!process.env.DB_PASSWORD && process.env.NODE_ENV !== 'test') {
@@ -104,22 +106,23 @@ export async function initDatabase() {
         reminder_before_hours INT DEFAULT 1,
         is_paused TINYINT(1) DEFAULT 0,
         password_hash VARCHAR(255) NOT NULL,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         INDEX idx_users_phone (phone)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
 
     // 如果表已存在但 phone 字段长度不够，尝试修改
+    // 注意：不添加 UNIQUE，因为 CREATE TABLE 时已经定义了，ALTER 时会自动保留
     try {
       await run(`
         ALTER TABLE users 
-        MODIFY COLUMN phone VARCHAR(100) UNIQUE NOT NULL
+        MODIFY COLUMN phone VARCHAR(100) NOT NULL
       `);
       logger.info('phone 字段长度已更新为 VARCHAR(100)');
     } catch (error) {
       // 忽略错误（可能是字段已经是正确长度，或者表不存在）
-      if (!error.message.includes('Duplicate') && !error.message.includes('doesn\'t exist')) {
+      if (!error.message.includes('Duplicate') && !error.message.includes('doesn\'t exist') && !error.message.includes('Too many keys')) {
         logger.warn('更新 phone 字段长度时出现警告:', error.message);
       }
     }
@@ -132,8 +135,8 @@ export async function initDatabase() {
         name VARCHAR(100) NOT NULL,
         phone VARCHAR(20) NOT NULL,
         is_primary TINYINT(1) DEFAULT 0,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
         INDEX idx_contacts_user_id (user_id)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
@@ -144,8 +147,8 @@ export async function initDatabase() {
       CREATE TABLE IF NOT EXISTS checkins (
         id INT AUTO_INCREMENT PRIMARY KEY,
         user_id INT NOT NULL,
-        check_in_time DATETIME DEFAULT CURRENT_TIMESTAMP,
-        next_check_in_deadline DATETIME NOT NULL,
+        check_in_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        next_check_in_deadline TIMESTAMP NOT NULL,
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
         INDEX idx_checkins_user_id (user_id),
         INDEX idx_checkins_deadline (next_check_in_deadline)
@@ -159,7 +162,7 @@ export async function initDatabase() {
         user_id INT NOT NULL,
         contact_id INT NOT NULL,
         sms_count INT DEFAULT 1,
-        sent_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         status VARCHAR(20) DEFAULT 'sent',
         error_message TEXT,
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,

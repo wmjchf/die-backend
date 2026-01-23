@@ -42,20 +42,31 @@ router.post('/', async (req, res, next) => {
     }
 
     const checkInIntervalHours = user.check_in_interval_hours || 24;
-    const now = getChinaTime(); // 使用中国时区时间
+    const now = getChinaTime(); // 获取当前时间
     const nextDeadline = new Date(now.getTime() + checkInIntervalHours * 60 * 60 * 1000);
 
     // 创建新的 check-in 记录
+    // 使用 getTime() 获取时间戳（毫秒），然后转换为秒用于 FROM_UNIXTIME
+    const nowTimestamp = now.getTime();
+    const nextDeadlineTimestamp = nextDeadline.getTime();
+
     const result = await run(
       `INSERT INTO checkins (user_id, check_in_time, next_check_in_deadline) 
-       VALUES (?, ?, ?)`,
-      [userId, formatMySQLDateTime(now), formatMySQLDateTime(nextDeadline)]
+       VALUES (?, FROM_UNIXTIME(? / 1000), FROM_UNIXTIME(? / 1000))`,
+      [userId, nowTimestamp, nextDeadlineTimestamp]
     );
 
     logger.info(`用户 ${userId} 完成 Check-in，下次截止时间: ${nextDeadline.toISOString()}`);
 
-    // 返回最新的 check-in 记录
-    const checkin = await get('SELECT * FROM checkins WHERE id = ?', [result.lastID]);
+    // 返回最新的 check-in 记录（直接返回时间戳）
+    const checkin = await get(
+      `SELECT 
+        id,
+        UNIX_TIMESTAMP(check_in_time) * 1000 as check_in_time,
+        UNIX_TIMESTAMP(next_check_in_deadline) * 1000 as next_check_in_deadline
+      FROM checkins WHERE id = ?`,
+      [result.lastID]
+    );
 
     res.status(201).json({
       message: '确认成功',
@@ -76,7 +87,12 @@ router.get('/latest', async (req, res, next) => {
     const userId = req.user.id;
 
     const checkin = await get(
-      `SELECT * FROM checkins 
+      `SELECT 
+        id,
+        UNIX_TIMESTAMP(check_in_time) * 1000 as check_in_time,
+        UNIX_TIMESTAMP(next_check_in_deadline) * 1000 as next_check_in_deadline,
+        next_check_in_deadline as next_check_in_deadline_raw
+      FROM checkins 
        WHERE user_id = ? 
        ORDER BY check_in_time DESC 
        LIMIT 1`,
@@ -92,7 +108,7 @@ router.get('/latest', async (req, res, next) => {
 
     // 检查是否已过期（使用中国时区）
     const now = getChinaTime();
-    const deadline = parseMySQLDateTime(checkin.next_check_in_deadline);
+    const deadline = parseMySQLDateTime(checkin.next_check_in_deadline_raw);
     const isOverdue = deadline ? now > deadline : false;
 
     res.json({
@@ -118,7 +134,12 @@ router.get('/history', async (req, res, next) => {
 
     // 注意：MySQL 预处理语句对 LIMIT 参数支持有限，使用字符串拼接（已验证为数字，安全）
     const checkins = await all(
-      `SELECT * FROM checkins 
+      `SELECT 
+        id,
+        user_id,
+        UNIX_TIMESTAMP(check_in_time) * 1000 as check_in_time,
+        UNIX_TIMESTAMP(next_check_in_deadline) * 1000 as next_check_in_deadline
+      FROM checkins 
        WHERE user_id = ? 
        ORDER BY check_in_time DESC 
        LIMIT ${offset}, ${limit}`,
@@ -153,9 +174,14 @@ router.get('/stats', async (req, res, next) => {
     // 获取用户配置
     const user = await get('SELECT * FROM users WHERE id = ?', [userId]);
 
-    // 获取最新的 check-in 记录
+    // 获取最新的 check-in 记录（需要原始字段用于比较，同时返回时间戳）
     const latestCheckin = await get(
-      `SELECT * FROM checkins 
+      `SELECT 
+        id,
+        UNIX_TIMESTAMP(check_in_time) * 1000 as check_in_time,
+        UNIX_TIMESTAMP(next_check_in_deadline) * 1000 as next_check_in_deadline,
+        next_check_in_deadline as next_check_in_deadline_raw
+      FROM checkins 
        WHERE user_id = ? 
        ORDER BY check_in_time DESC 
        LIMIT 1`,
@@ -197,7 +223,7 @@ router.get('/stats', async (req, res, next) => {
     if (latestCheckin) {
       nextDeadline = latestCheckin.next_check_in_deadline;
       const now = getChinaTime();
-      const deadlineTime = parseMySQLDateTime(nextDeadline);
+      const deadlineTime = parseMySQLDateTime(latestCheckin.next_check_in_deadline_raw);
       
       if (deadlineTime) {
         isOverdue = now > deadlineTime;
