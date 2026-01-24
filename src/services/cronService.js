@@ -10,20 +10,20 @@ const SMS_INTERVAL_MINUTES = parseInt(process.env.SMS_INTERVAL_MINUTES || '30');
 async function checkAndSendReminders() {
   try {
     logger.info('开始检查超时用户...');
-    
-    const now = getChinaTime(); // 获取当前时间
-    
+
+    // 使用 Date 对象作为当前时间，直接和 TIMESTAMP 字段比较
+    const now = getChinaTime().getTime(); // 获取当前时间（Date）
     // 查找所有超过截止时间且未暂停的用户
-    // 使用 TIMESTAMP 时，可以直接使用 Date 对象，mysql2 会自动处理
+    // 先按用户聚合出每个用户最新的一条截止时间，再在 HAVING 中做超时判断
     const overdueUsers = await all(`
       SELECT DISTINCT u.*, 
-             MAX(c.next_check_in_deadline) as last_deadline,
-             MAX(c.check_in_time) as last_check_in
+             MAX(UNIX_TIMESTAMP(c.next_check_in_deadline) * 1000) AS last_deadline,
+             MAX(UNIX_TIMESTAMP(c.check_in_time) * 1000) AS last_check_in
       FROM users u
       LEFT JOIN checkins c ON u.id = c.user_id
       WHERE u.is_paused = 0
-        AND (c.next_check_in_deadline IS NULL OR c.next_check_in_deadline < ?)
       GROUP BY u.id
+      HAVING last_deadline IS NULL OR last_deadline < ?
     `, [now]);
 
     for (const user of overdueUsers) {
@@ -43,16 +43,9 @@ async function processOverdueUser(user, now) {
   try {
     const deadline = user.last_deadline;
     if (!deadline) return;
-
-    // mysql2 已经将 TIMESTAMP 转换为 Date 对象
-    const deadlineTime = parseMySQLDateTime(deadline);
-    if (!deadlineTime) {
-      logger.warn(`用户 ${user.id} 的截止时间格式无效: ${deadline}`);
-      return;
-    }
     
     const gracePeriodHours = user.grace_period_hours || 2;
-    const gracePeriodEnd = new Date(deadlineTime.getTime() + gracePeriodHours * 60 * 60 * 1000);
+    const gracePeriodEnd = new Date(deadline + gracePeriodHours * 60 * 60 * 1000);
 
     // 检查是否已过宽限期
     if (now < gracePeriodEnd) {
@@ -71,36 +64,40 @@ async function processOverdueUser(user, now) {
       return;
     }
 
-    // 检查已发送的短信数量（今日，使用中国时区）
-    const today = formatMySQLDateTime(now).split(' ')[0]; // 获取今天的日期部分 YYYY-MM-DD
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const todayEnd = new Date();
+    todayEnd.setHours(23, 59, 59, 999);
+    
+    const startTs = todayStart.getTime();
+    const endTs = todayEnd.getTime();
+    
     const smsLogs = await all(
-      `SELECT MAX(sms_count) as max_count, MAX(sent_at) as last_sent
-       FROM sms_logs 
-       WHERE user_id = ? 
-         AND DATE(sent_at) = ?
-       ORDER BY sent_at DESC
-       LIMIT 1`,
-      [user.id, today]
+      `SELECT MAX(sms_count) AS max_count,
+              MAX(UNIX_TIMESTAMP(sent_at) * 1000) AS last_sent
+       FROM sms_logs
+       WHERE user_id = ?
+         AND sent_at BETWEEN FROM_UNIXTIME(? / 1000) AND FROM_UNIXTIME(? / 1000)`,
+      [user.id, startTs, endTs]
     );
 
     const lastSMS = smsLogs[0];
     const currentSmsCount = lastSMS?.max_count || 0;
 
-    if (currentSmsCount >= MAX_SMS_COUNT) {
+    if (currentSmsCount > MAX_SMS_COUNT) {
       logger.info(`用户 ${user.id} 今日已发送 ${currentSmsCount} 条短信，达到上限`);
       return;
     }
 
     // 检查是否需要发送（第一条立即发送，后续需要间隔）
     if (currentSmsCount > 0) {
-      const lastSentTime = parseMySQLDateTime(lastSMS.last_sent); // mysql2 已经转换为 Date 对象
+      const lastSentTime = lastSMS.last_sent; // mysql2 已经转换为 Date 对象
       if (!lastSentTime) {
         logger.warn(`用户 ${user.id} 的上次发送时间解析失败，跳过间隔检查`);
         return;
       }
       const minutesSinceLastSMS = (now - lastSentTime) / (1000 * 60);
-      
-      if (minutesSinceLastSMS < SMS_INTERVAL_MINUTES) {
+      if (minutesSinceLastSMS < 1) {
         logger.debug(`用户 ${user.id} 距离上次发送不足 ${SMS_INTERVAL_MINUTES} 分钟，跳过`);
         return;
       }
@@ -173,7 +170,7 @@ async function sendReminderNotifications() {
  */
 export function initCronJobs() {
   // 每 5 分钟检查一次超时用户
-  cron.schedule('*/5 * * * *', checkAndSendReminders);
+  cron.schedule('*/1 * * * *', checkAndSendReminders);
   logger.info('已启动定时任务：每 5 分钟检查超时用户');
 
   // 每 10 分钟检查一次需要发送提醒的用户
