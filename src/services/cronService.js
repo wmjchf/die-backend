@@ -97,7 +97,7 @@ async function processOverdueUser(user, now) {
         return;
       }
       const minutesSinceLastSMS = (now - lastSentTime) / (1000 * 60);
-      if (minutesSinceLastSMS < 1) {
+      if (minutesSinceLastSMS < SMS_INTERVAL_MINUTES) {
         logger.debug(`用户 ${user.id} 距离上次发送不足 ${SMS_INTERVAL_MINUTES} 分钟，跳过`);
         return;
       }
@@ -170,7 +170,7 @@ async function sendReminderNotifications() {
  */
 export function initCronJobs() {
   // 每 5 分钟检查一次超时用户
-  cron.schedule('*/1 * * * *', checkAndSendReminders);
+  cron.schedule('*/5 * * * *', checkAndSendReminders);
   logger.info('已启动定时任务：每 5 分钟检查超时用户');
 
   // 每 10 分钟检查一次需要发送提醒的用户
