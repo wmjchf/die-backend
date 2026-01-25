@@ -221,7 +221,7 @@ router.post('/wechat-login', [
       const result = await run(
         `INSERT INTO users (phone, password_hash, nickname, timezone) 
          VALUES (?, ?, ?, ?)`,
-        [openid, passwordHash, `微信用户_${openid.substring(0, 8)}`, timezone]
+        [openid, passwordHash, null, timezone]
       );
 
       user = await get('SELECT * FROM users WHERE id = ?', [result.lastID]);

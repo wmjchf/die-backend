@@ -22,7 +22,9 @@ router.get('/', async (req, res, next) => {
         is_primary,
         UNIX_TIMESTAMP(created_at) * 1000 as created_at,
         UNIX_TIMESTAMP(updated_at) * 1000 as updated_at
-      FROM contacts WHERE user_id = ? ORDER BY is_primary DESC, created_at ASC`,
+      FROM contacts
+      WHERE user_id = ?
+      ORDER BY is_primary DESC, created_at ASC`,
       [req.user.id]
     );
 
@@ -86,7 +88,8 @@ router.post('/', [
         is_primary,
         UNIX_TIMESTAMP(created_at) * 1000 as created_at,
         UNIX_TIMESTAMP(updated_at) * 1000 as updated_at
-      FROM contacts WHERE id = ?`,
+      FROM contacts
+      WHERE id = ?`,
       [result.lastID]
     );
 
@@ -188,7 +191,8 @@ router.put('/:id', [
         is_primary,
         UNIX_TIMESTAMP(created_at) * 1000 as created_at,
         UNIX_TIMESTAMP(updated_at) * 1000 as updated_at
-      FROM contacts WHERE id = ?`,
+      FROM contacts
+      WHERE id = ?`,
       [contactId]
     );
 

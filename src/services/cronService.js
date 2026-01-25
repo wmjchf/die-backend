@@ -14,16 +14,17 @@ async function checkAndSendReminders() {
     // 使用 Date 对象作为当前时间，直接和 TIMESTAMP 字段比较
     const now = getChinaTime().getTime(); // 获取当前时间（Date）
     // 查找所有超过截止时间且未暂停的用户
+    // 只检查有签到记录的用户（使用 INNER JOIN），排除从未签到过的用户
     // 先按用户聚合出每个用户最新的一条截止时间，再在 HAVING 中做超时判断
     const overdueUsers = await all(`
       SELECT DISTINCT u.*, 
              MAX(UNIX_TIMESTAMP(c.next_check_in_deadline) * 1000) AS last_deadline,
              MAX(UNIX_TIMESTAMP(c.check_in_time) * 1000) AS last_check_in
       FROM users u
-      LEFT JOIN checkins c ON u.id = c.user_id
+      INNER JOIN checkins c ON u.id = c.user_id
       WHERE u.is_paused = 0
       GROUP BY u.id
-      HAVING last_deadline IS NULL OR last_deadline < ?
+      HAVING last_deadline < ?
     `, [now]);
 
     for (const user of overdueUsers) {
@@ -55,7 +56,9 @@ async function processOverdueUser(user, now) {
 
     // 获取用户的紧急联系人
     const contacts = await all(
-      'SELECT * FROM contacts WHERE user_id = ? ORDER BY is_primary DESC, id ASC',
+      `SELECT * FROM contacts
+       WHERE user_id = ?
+       ORDER BY is_primary DESC, id ASC`,
       [user.id]
     );
 

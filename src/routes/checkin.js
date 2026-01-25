@@ -20,6 +20,14 @@ router.post('/', async (req, res, next) => {
       return res.status(404).json({ error: '用户不存在' });
     }
 
+    // 验证是否填写了昵称
+    if (!user.nickname || user.nickname.trim() === '') {
+      return res.status(400).json({ 
+        error: '请先填写昵称', 
+        message: '签到前需要先设置昵称，请前往个人设置页面填写' 
+      });
+    }
+
     if (user.is_paused) {
       return res.status(400).json({ error: '服务已暂停，请先恢复服务' });
     }
