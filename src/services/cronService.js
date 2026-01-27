@@ -4,7 +4,7 @@ import { sendSMS, logSMS } from './smsService.js';
 import { logger } from '../utils/logger.js';
 import { formatMySQLDateTime, getChinaTime, parseMySQLDateTime } from '../utils/timezone.js';
 
-const MAX_SMS_COUNT = parseInt(process.env.MAX_SMS_COUNT || '3');
+const MAX_SMS_COUNT = parseInt(process.env.MAX_SMS_COUNT || '1');
 const SMS_INTERVAL_MINUTES = parseInt(process.env.SMS_INTERVAL_MINUTES || '30');
 
 async function checkAndSendReminders() {
@@ -87,24 +87,24 @@ async function processOverdueUser(user, now) {
     const lastSMS = smsLogs[0];
     const currentSmsCount = lastSMS?.max_count || 0;
 
-    if (currentSmsCount > MAX_SMS_COUNT) {
+    if (currentSmsCount >= MAX_SMS_COUNT) {
       logger.info(`用户 ${user.id} 今日已发送 ${currentSmsCount} 条短信，达到上限`);
       return;
     }
 
     // 检查是否需要发送（第一条立即发送，后续需要间隔）
-    if (currentSmsCount > 0) {
-      const lastSentTime = lastSMS.last_sent; // mysql2 已经转换为 Date 对象
-      if (!lastSentTime) {
-        logger.warn(`用户 ${user.id} 的上次发送时间解析失败，跳过间隔检查`);
-        return;
-      }
-      const minutesSinceLastSMS = (now - lastSentTime) / (1000 * 60);
-      if (minutesSinceLastSMS < SMS_INTERVAL_MINUTES) {
-        logger.debug(`用户 ${user.id} 距离上次发送不足 ${SMS_INTERVAL_MINUTES} 分钟，跳过`);
-        return;
-      }
-    }
+    // if (currentSmsCount > 0) {
+    //   const lastSentTime = lastSMS.last_sent; // mysql2 已经转换为 Date 对象
+    //   if (!lastSentTime) {
+    //     logger.warn(`用户 ${user.id} 的上次发送时间解析失败，跳过间隔检查`);
+    //     return;
+    //   }
+    //   const minutesSinceLastSMS = (now - lastSentTime) / (1000 * 60);
+    //   if (minutesSinceLastSMS < SMS_INTERVAL_MINUTES) {
+    //     logger.debug(`用户 ${user.id} 距离上次发送不足 ${SMS_INTERVAL_MINUTES} 分钟，跳过`);
+    //     return;
+    //   }
+    // }
 
     // 发送短信给所有联系人
     const newSmsCount = currentSmsCount + 1;
